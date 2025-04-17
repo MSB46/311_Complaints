@@ -1,0 +1,8 @@
+FROM apache/airflow:2.10.5
+
+USER airflow
+
+# Install additional Python dependencies
+COPY app/requirements.txt /
+RUN pip install --no-cache-dir -r /requirements.txt
+
