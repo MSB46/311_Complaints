@@ -52,7 +52,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-.idea
+.idea/
 
 # Other files / folders (docker related)
 shared/
