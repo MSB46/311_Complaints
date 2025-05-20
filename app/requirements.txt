@@ -1,10 +1,7 @@
-# pandas~=2.2.3
-# requests~=2.32.3
 apache-airflow==2.10.5
-#matplotlib~=3.10.1
 statsmodels~=0.14.4
 scikit-learn~=1.6.1
-streamlit~=1.44.0
+streamlit
 streamlit_autorefresh
 joblib
 kaleido
