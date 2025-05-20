@@ -47,6 +47,7 @@ __pypackages__/
 # Environments
 .env
 .venv
+.dockerignore
 env/
 venv/
 ENV/
@@ -55,8 +56,16 @@ venv.bak/
 .idea/
 
 # Other files / folders (docker related)
-shared/
+#shared/
 logs/
 plugins/
 README.Docker.md
 *.pkl
+*.parquet
+*.db
+
+# Specifics
+test_st.py
+fetch_split.ipynb
+TimeSeries311NoiseComplaints.ipynb
+

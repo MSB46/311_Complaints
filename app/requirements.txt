@@ -11,3 +11,4 @@ streamlit_autorefresh
 joblib
 kaleido
 plotly
+numpy
