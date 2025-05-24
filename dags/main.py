@@ -721,29 +721,6 @@ with (DAG(
         joblib.dump(best_model, model_path)
         return model_path
 
-    # @task()
-    # def train_model(train_data_path, params):
-    #     # Code to train the forecasting model
-    #     from statsmodels.tsa.statespace.sarimax import SARIMAX
-    #     import joblib
-    #
-    #     df_ = pd.read_parquet(train_data_path).set_index('created_date')
-    #     train_size = int(168 * 10)
-    #     test_size = int(16.8 * 10)
-    #     train = df_.iloc[-(train_size + test_size):-test_size]
-    #
-    #     # Fit the SARIMA model
-    #     new_model = SARIMAX(train_data, order=params[0], seasonal_order=params[1], trend=params[2])
-    #     model_fit = new_model.fit(disp=0)
-    #
-    #     model_path = r"/opt/airflow/dags/model.pkl"
-    #     joblib.dump(model_fit, model_path)
-    #     return model_path
-
-    # @task()
-    # def various_eda():
-    #     pass
-
     @task()
     def generate_forecast(mdl_path, train_size, test_size):
         # Code to generate forecasts using the trained model and save forecast results
