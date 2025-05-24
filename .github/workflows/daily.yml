@@ -26,3 +26,4 @@ jobs:
         with:
           commit_message: 'Scheduled update of plots\n\nskip-checks:true'
           file_pattern: 'shared/*'
+          disable_globbing: true
