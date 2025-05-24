@@ -22,7 +22,7 @@ jobs:
           ref: ${{ github.head_ref }}
           token: ${{ secrets.IDK_SECRET }}
 
-      - name: Mark time
+      - name: Mark timestamp
         run: |
           date >> shared/timestamp.txt
 
