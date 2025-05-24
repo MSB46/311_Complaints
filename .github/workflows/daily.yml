@@ -3,6 +3,7 @@ name: daily plot update
 on:
   schedule:
     - cron: '0 2 * * *'
+  workflow_dispatch:
   push:
     branches:
       - master
@@ -23,6 +24,6 @@ jobs:
       - name: Git Auto Commit
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: 'Scheduled update of plots\n\nskip-checks:true'
+          commit_message: 'Scheduled update of plots'
           file_pattern: 'shared/*'
           disable_globbing: true
