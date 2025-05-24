@@ -21,15 +21,12 @@ jobs:
           ref: ${{ github.head_ref }}
           token: ${{ secrets.IDK_SECRET }}
 
-      - name: Mark time
+      - name: Mark timestamp
         run: |
-          date >> shared/timestamp.txt
+          date >> timestamp.txt
 
       - name: Git Auto Commit
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: |
-            Scheduled update of plots
-            
-            [skip-checks]
+          commit_message: 'Scheduled update of plots\n\nskip-checks:true'
           file_pattern: 'shared/*'
