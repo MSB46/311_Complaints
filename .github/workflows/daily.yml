@@ -9,28 +9,27 @@ on:
       - master
 
 jobs:
-  - format-code:
-      runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
-      permissions:
-        contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: '${{ secrets.IDK_SECRET }}'
 
-      steps:
-        - uses: actions/checkout@v4
-          with:
-            token: '${{ secrets.IDK_SECRET }}'
+      - name: Git Auto Commit
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'Scheduled update of plots'
+          file_pattern: '*.csv/*.html'
+          repository: 'shared'
 
-        - name: Git Auto Commit
-          uses: stefanzweifel/git-auto-commit-action@v5
-          with:
-            commit_message: 'Scheduled update of plots'
-            file_pattern: '*.csv/*.html'
-            repository: 'shared'
-
-        - name: Push Changes
-          env:
-            PAT: '${{ secrets.IDK_SECRET }}'
-          run: |
-            git push https://x-access-token:${PAT}@github.com/${{ github.repository }}
-
+      - name: Push Changes
+        env:
+          PAT: '${{ secrets.IDK_SECRET }}'
+        run: |
+          git push https://x-access-token:${PAT}@github.com/${{ github.repository }}
+  
 
