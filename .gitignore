@@ -57,7 +57,6 @@ venv.bak/
 .devcontainer/
 
 # Other files / folders (docker related)
-#shared/
 logs/
 plugins/
 README.Docker.md
