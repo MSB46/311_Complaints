@@ -4,7 +4,6 @@ on:
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:
-  push:
 
 jobs:
   auto-commit:
@@ -20,11 +19,11 @@ jobs:
 
       - name: Timestamp
         run: |
-          file="timestamp.txt"
+          file="shared/timestamp.txt"
           if [ -f "$file" ]; then
             rm "$file"
           fi
-          date >> timestamp.txt
+          date >> "$file"
 
       - name: Git Auto Commit
         uses: stefanzweifel/git-auto-commit-action@v5
@@ -35,4 +34,3 @@ jobs:
             
             [skip-checks]
           file_pattern: 'shared/*'
-          disable_globbing: true
