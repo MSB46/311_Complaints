@@ -33,4 +33,4 @@ jobs:
             
             
             [skip-checks]
-          file_pattern: 'shared/*'
+          file_pattern: 'shared/**'
