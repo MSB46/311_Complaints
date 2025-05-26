@@ -24,7 +24,7 @@ jobs:
           if [ -f "$file" ]; then
             rm "$file"
           fi
-          date >> "$file"
+          date >> timestamp.txt
 
       - name: Git Auto Commit
         uses: stefanzweifel/git-auto-commit-action@v5
