@@ -1,9 +1,10 @@
 name: daily plot update
 
 on:
+  workflow_dispatch:
+
   schedule:
     - cron: '0 2 * * *'
-  workflow_dispatch:
 
 jobs:
   auto-commit:
@@ -14,8 +15,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Timestamp
         run: |
