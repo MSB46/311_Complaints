@@ -21,8 +21,8 @@ jobs:
       - name: Timestamp
         run: |
           file="timestamp.txt"
-          if [ -f "$file" ] ; then
-          rm "$file"
+          if [ -f "$file" ]; then
+            rm "$file"
           fi
           date >> "$file"
 
@@ -31,6 +31,7 @@ jobs:
         with:
           commit_message: |
             Scheduled update of plots
+            
             
             [skip-checks]
           file_pattern: 'shared/*'
