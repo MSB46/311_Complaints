@@ -198,7 +198,26 @@ with (DAG(
 
         df_resample = df_.resample('h').count().rename(columns={'unique_key': 'num_complaints'})[['num_complaints']]
 
-        # Load data
+        df_resample = pd.DataFrame(df_resample)
+
+        OFFSET = 24
+        new_dates_forecasted = pd.date_range(start=df_resample.index[-1], periods=OFFSET + 1, freq='h')[1:]
+        df_resample = pd.concat([df_resample, pd.DataFrame(index=new_dates_forecasted)])
+
+        # Feature engineering
+        # df_311_noise_hourly = pd.DataFrame(df_311_noise_hourly)
+        df_resample['complaints_1week_ago'] = df_resample['num_complaints'].shift(24 * 7)
+        df_resample['peak_complaints_24hrs'] = df_resample['num_complaints'].ffill().rolling('1D').max()
+        df_resample['dayofweek'] = df_resample.index.dayofweek
+        df_resample['hour'] = df_resample.index.hour
+        df_resample['rolling_avg_dayofweek_hour_prev3instances'] = \
+        df_resample.groupby(['dayofweek', 'hour'])['num_complaints'].transform(
+            lambda x: x.ffill().rolling(3).mean())
+
+        del df_resample['dayofweek']
+        del df_resample['hour']
+
+        # Exporting data
         export_path_rs = r"/opt/airflow/dags/complaints_hourly.parquet"
         export_path_df = r"/opt/airflow/dags/complaint_records.parquet"
 
@@ -206,16 +225,6 @@ with (DAG(
         df_.to_parquet(export_path_df, index=True)
         return {'rs_path': export_path_rs,
                 'df_path': export_path_df}
-
-
-    # @task()
-    # def load_data(df_resample, df):
-    #     export_path_rs = r"/opt/airflow/dags/complaints_hourly.parquet"
-    #     export_path_df = r"/opt/airflow/dags/complaint_records.parquet"
-    #     df_resample.to_parquet(export_path_rs, index=True)
-    #     df.to_parquet(export_path_df, index=True)
-    #
-    #     return {'rs_path': export_path_rs, 'df_path': export_path_df}
 
 
     @task()
@@ -375,15 +384,6 @@ with (DAG(
                                           hovertemplate='Hour: %{customdata}<extra></extra>' + '<br>Total Complaints: <b>%{y}</b>',
                                           showlegend=False),
                                    row=1, col=i)
-
-                    # fig.add_hline(y=mean_complaints, line_dash="dot",
-                    #                annotation_text=f"Mean: {mean_complaints}",
-                    #                annotation_position="center",
-                    #                annotation_font_size=12,
-                    #                annotation_font_color="rgba(255, 255, 199, 0.85)",
-                    #                row=1, col=i
-                    #                )
-
 
                 fig.update_xaxes(title_text='Hour', title_standoff=15, row=1, col=1)
 
@@ -671,41 +671,80 @@ with (DAG(
     @task(multiple_outputs=True)
     def split_data(df, train_size, test_size):
         df_ = pd.read_parquet(df)
-        # .set_index('created_date')
 
         train, test = df_.iloc[-(train_size + test_size):-test_size], df_.iloc[-test_size:]
-        train.index = pd.DatetimeIndex(train.index).to_period('h')
-        test.index = pd.DatetimeIndex(test.index).to_period('h')
 
-        train_path = r"/opt/airflow/dags/train.parquet"
-        test_path = r"/opt/airflow/dags/test.parquet"
-        train.to_parquet(train_path, index=True)
-        test.to_parquet(test_path, index=True)
+        train_y, train_x = train.iloc[:, 0], train.iloc[:, 1:]
+        test_y, test_x = test.iloc[:, 0], test.iloc[:, 1:]
 
-        return {'train_records': train_path, 'test_records': test_path}
+        train_y.index = pd.DatetimeIndex(train_y.index).to_period('h')
+        test_y.index = pd.DatetimeIndex(test_y.index).to_period('h')
+
+        train_x.index = pd.DatetimeIndex(train_x.index).to_period('h')
+        test_x.index = pd.DatetimeIndex(test_x.index).to_period('h')
+
+        train_y_path = r"/opt/airflow/dags/train_y.parquet"
+        test_y_path = r"/opt/airflow/dags/test_y.parquet"
+
+        pd.DataFrame(train_y).to_parquet(train_y_path, index=True)
+        pd.DataFrame(test_y).to_parquet(test_y_path, index=True)
+
+        def get_exog(df_y, df_x):
+            days_of_week_dict = {'Friday': 4, 'Saturday': 5, 'Sunday': 6}
+            exog = df_y.copy()
+            exog = exog.reset_index()
+            exog.rename(columns={'index': 'created_date'}, inplace=True)
+
+            def min_max(x, c):
+                return (x - exog[c].min()) / (exog[c].max() - exog[c].min())
+
+            for c in df_x.columns:
+                exog[c] = df_x[c].values
+                exog[c] = exog[c].apply(lambda x: min_max(x, c))
+
+            for dow, v in days_of_week_dict.items():
+                exog[dow] = (exog['created_date'].dt.dayofweek == v).astype(int)
+
+            exog.index = exog['created_date']
+            del exog['num_complaints']
+            del exog['created_date']
+
+            return exog
+
+        exog_train_path = r"/opt/airflow/dags/exog_train.parquet"
+        exog_test_path = r"/opt/airflow/dags/exog_test.parquet"
+
+        exog_train = get_exog(train_y, train_x)
+        exog_test = get_exog(test_y, test_x)
+
+        exog_train.to_parquet(exog_train_path, index=True)
+        exog_test.to_parquet(exog_test_path, index=True)
+
+        return {'train_records': train_y_path, 'test_records': test_y_path,
+                'exog_train': exog_train_path, 'exog_test': exog_test_path}
 
     @task()
-    def find_best_model(train_path):
+    def find_best_model(train_path, exog_train_path):
         from statsmodels.tsa.statespace.sarimax import SARIMAX
         from itertools import product
         import numpy as np
         import joblib
 
         train = pd.read_parquet(train_path)
-        # .set_index('created_date')
+        exog_train = pd.read_parquet(exog_train_path)
 
-        order_combs = list(product([1,2], [0], [1, 2]))
+        order_combs = list(product([1], [0], [3, 4, 5]))
         season_order_combs = list(product([0], [1], [2], [24]))
-        trend_combs = ['c', 'n']
+        trend_combs = ['c']
         train_parameters = set([(a, b, c) for b in season_order_combs for a in order_combs for c in trend_combs])
 
-        best_model = None
+        best_model, best_params = None, None
         best_aic = np.inf
 
         for i, (pdq, pdq_S, t) in enumerate(train_parameters):
             print(f'{i} / {len(train_parameters)} completed ...')
             try:
-                cur_model = SARIMAX(train, order=pdq, seasonal_order=pdq_S, trend=t, enforce_stationarity=True,
+                cur_model = SARIMAX(endog=train, exog=exog_train, order=pdq, seasonal_order=pdq_S, trend=t, enforce_stationarity=False,
                                     enforce_invertibility=True).fit()
             except Exception as e:
                 print(f"Parameters {pdq} {pdq_S} {t} encountered an error: {e}")
@@ -715,18 +754,24 @@ with (DAG(
             if cur_aic < best_aic:
                 best_aic = cur_aic
                 best_model = cur_model
-                # best_params = [pdq, pdq_S, t]
+                best_params = [pdq, pdq_S, t]
+
+        print(f"Best model parameters: {best_params}")
+        print(f"Best model aic: {best_aic}")
 
         model_path = r"/opt/airflow/dags/model.pkl"
         joblib.dump(best_model, model_path)
         return model_path
 
     @task()
-    def generate_forecast(mdl_path, train_size, test_size):
+    def generate_forecast(mdl_path, train_size, test_size, exog_test_path):
         # Code to generate forecasts using the trained model and save forecast results
         import joblib
+
+        exog_test = pd.read_parquet(exog_test_path)
+
         model_ = joblib.load(mdl_path)
-        pred_ = model_.predict(start=train_size, end=train_size+test_size+24)
+        pred_ = model_.predict(start=train_size, end=train_size+test_size-1, exog=exog_test)
 
         df_fc = pred_.reset_index().rename(columns={'index': 'created_date'})
         df_fc['created_date'] = df_fc['created_date'].astype(str)
@@ -741,31 +786,33 @@ with (DAG(
         import plotly.graph_objects as go
 
         # Code to store or visualize the forecasted data
-        df_fc = pd.read_csv(f_path, index_col=0)
-        df_fc['created_date'] = df_fc['created_date'].astype(str)
-        df_fc['created_date'] = pd.to_datetime(df_fc['created_date'])
+        df_test_pred = pd.read_csv(f_path, index_col=0)
+        df_test_pred['created_date'] = df_test_pred['created_date'].astype(str)
+        df_test_pred['created_date'] = pd.to_datetime(df_test_pred['created_date'])
 
-        df_train = pd.read_parquet(train_path)
+        df_train = pd.read_parquet(train_path).reset_index().rename(columns={'index':'created_date'})
         NUM_DAYS_LOOK_BACK = 7
         START_DATE_CHECK = len(df_train) - 24 * NUM_DAYS_LOOK_BACK
+
         df_train = df_train.iloc[START_DATE_CHECK:]
-        df_train = df_train.reset_index()
+        # df_train = df_train.reset_index()
         df_train['created_date'] = df_train['created_date'].astype(str)
         df_train['created_date'] = pd.to_datetime(df_train['created_date'])
 
-        df_test = pd.read_parquet(test_path)
-        df_test = df_test.reset_index()
-        df_test['created_date'] = df_test['created_date'].astype(str)
-        df_test['created_date'] = pd.to_datetime(df_test['created_date'])
+        df_test_actual = pd.read_parquet(test_path).reset_index().rename(columns={'index':'created_date'})
+        # df_test_actual = df_test_actual.reset_index()
+        df_test_actual['created_date'] = df_test_actual['created_date'].astype(str)
+        df_test_actual['created_date'] = pd.to_datetime(df_test_actual['created_date'])
 
         # Creating the forecast plot
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df_fc['created_date'], y=df_fc['predicted_mean'], name='Forecast',
-                                  marker_color='rgba(255, 77, 151, .9)', text=df_fc['created_date'].dt.day_name()))
-        fig.add_trace(go.Scatter(x=df_train['created_date'], y=df_train['num_complaints'], name='Observed',
+        fig.add_trace(go.Scatter(x=df_train['created_date'], y=df_train['num_complaints'], name='Train Observed',
                                   marker_color='rgba(244, 244, 255, .9)', text=df_train['created_date'].dt.day_name()))
-        fig.add_trace(go.Scatter(x=df_test['created_date'], y=df_test['num_complaints'], name='Observed',
-                                  marker_color='rgba(155, 152, 255, .9)', text=df_test['created_date'].dt.day_name()))
+        fig.add_trace(go.Scatter(x=df_test_actual['created_date'], y=df_test_actual['num_complaints'], name='Test Observed',
+                                  marker_color='rgba(155, 152, 255, .9)', text=df_test_actual['created_date'].dt.day_name()))
+        fig.add_trace(go.Scatter(x=df_test_pred['created_date'], y=df_test_pred['predicted_mean'], name='Predicted Mean',
+                                 marker_color='rgba(255, 77, 151, .65)',
+                                 text=df_test_pred['created_date'].dt.day_name()))
 
         fig.update_layout(
             title='Noise Complaint Forecast',
@@ -810,9 +857,10 @@ with (DAG(
 
             split_records = split_data(rs_path, train_size, test_size)
             train_records, test_records = split_records['train_records'], split_records['test_records']
+            train_exog, test_exog = split_records['exog_train'], split_records['exog_test']
 
-            trained_model = find_best_model(train_records)
-            forecast_path = generate_forecast(trained_model, train_size, test_size)
+            trained_model = find_best_model(train_records, train_exog)
+            forecast_path = generate_forecast(trained_model, train_size, test_size, test_exog)
             make_forecast_plot = visualize_forecast(forecast_path, train_records, test_records)
 
             split_records >> trained_model >> forecast_path >> make_forecast_plot
