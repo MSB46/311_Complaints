@@ -18,7 +18,7 @@ with st.container():
     # HEADER
     st.markdown(
         '''
-        # A Wracking Racket Crackdown  
+        # Racket Crackdown  
         ## A forecast and analysis on 311 noise complaints filed in New York City.
         ''')
     st.markdown(
