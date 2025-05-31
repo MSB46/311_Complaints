@@ -24,6 +24,15 @@ jobs:
           fi
           date >> "$file"
 
+      - name: Show Git Diff
+        run: git diff
+
+      - name: List Shared Folder Contents
+        run: ls -lR shared
+
+      - name: Git Status
+        run: git status
+
       - name: Git Auto Commit
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
