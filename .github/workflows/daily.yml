@@ -28,9 +28,6 @@ jobs:
       - name: Show Diff
         run: git diff
 
-      - name: List Contents
-        run: ls -lR shared
-
       - name: Show Status Plus Untracked
         run: git status --untracked-files=all
 
@@ -42,5 +39,4 @@ jobs:
             
             
             [skip-checks]
-          file_pattern: 'shared/**'
           push_options: '--force-with-lease'
