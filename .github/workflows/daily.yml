@@ -31,8 +31,14 @@ jobs:
       - name: List Contents
         run: ls -lR shared
 
-      - name: Show Status
-        run: git status
+      - name: Show Status Plus Untracked
+        run: git status --untracked-files=all
+
+      - name: Check shared folder
+        run: |
+          git add shared/*
+          git commit -m "Review of shared contents"
+          git push origin master
 
       - name: Git Auto Commit
         uses: stefanzweifel/git-auto-commit-action@v5
@@ -42,6 +48,5 @@ jobs:
             
             
             [skip-checks]
-          file_pattern: 'shared/**'
           skip_dirty_check: true
           push_options: '--force-with-lease'
