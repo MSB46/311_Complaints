@@ -843,12 +843,52 @@ with (DAG(
         fig.write_html(fig_path)
         return fig_path
 
+    @task
+    def update_contents_to_repo():
+        import os
+        from airflow.models import Variable
+        def to_github(cur_file_path, repo_path):
+            with open(cur_file_path, 'r', errors="ignore") as f:
+                contents = f.read()
+
+            url = f"https://api.github.com/repos/msb46/311_complaints/contents/{github_path}"
+            headers = {
+                "Authorization": f"Bearer {Variable.get('311_TOKEN')}",
+                "Accept": "application/vnd.github+json"
+            }
+
+            # Check if file already exists to get its SHA
+            get_resp = requests.get(url, headers=headers)
+            sha = get_resp.json().get("sha") if get_resp.status_code == 200 else None
+
+            payload = {
+                "message": f"Update {repo_path} [skip-checks]",
+                "content": contents,
+                "branch": 'master',
+            }
+
+            if sha:
+                payload["sha"] = sha
+
+            resp = requests.put(url, headers=headers, json=payload)
+            resp.raise_for_status()
+
+        local_shared_dir = r'/opt/airflow/dags/shared'
+        for root, _, files in os.walk(local_shared_dir):
+            print(f"{len(files)} files found in directory")
+            for f in files:
+                local_path = os.path.join(root, f)
+                rel_path = os.path.relpath(local_path, local_shared_dir)
+                github_path = f"shared/{rel_path}"
+                to_github(rel_path, github_path)
+
 
     with TaskGroup("extract_transform_load", tooltip="Extract, Transform, Load") as etl:
         init_db = initialize_database()
         extracted_data = extract_data()
         transformed_data = transform_load_data(extracted_data)
         rs_path, df_path = transformed_data["rs_path"], transformed_data["df_path"]
+
         create_visuals = visualize(df_path)
 
         with TaskGroup("train_model_forecast", tooltip="Training + Forecasting") as tmf:
@@ -865,4 +905,6 @@ with (DAG(
 
             split_records >> trained_model >> forecast_path >> make_forecast_plot
 
-        init_db >> extracted_data >> transformed_data >> [create_visuals, tmf]
+        to_gh = update_contents_to_repo()
+
+        init_db >> extracted_data >> transformed_data >> [create_visuals, tmf] >> to_gh
