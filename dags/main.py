@@ -12,7 +12,7 @@ default_args = {
 with (DAG(
         dag_id='311_noise_forecast_pipeline',
         default_args=default_args,
-        schedule='0 0 * * *',
+        schedule='0 5 * * *',
         catchup=False,
         tags=['311_data'],
         max_active_runs=1)) as dag:
@@ -846,10 +846,12 @@ with (DAG(
     @task
     def update_contents_to_repo():
         import os
+        import base64
         from airflow.models import Variable
         def to_github(cur_file_path, repo_path):
             with open(cur_file_path, 'r', errors="ignore") as f:
                 contents = f.read()
+                contents = base64.b64encode(contents).decode()
 
             url = f"https://api.github.com/repos/msb46/311_complaints/contents/{github_path}"
             headers = {
