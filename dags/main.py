@@ -24,8 +24,7 @@ with (DAG(
         import numpy as np
         import sqlite3
         URL = 'https://data.cityofnewyork.us/resource/erm2-nwe9.json?$select=unique_key,created_date,complaint_type,descriptor,borough,location_type,street_name,Latitude,Longitude&$where=complaint_type%20LIKE%20%22%25Noise%25%22&$order=created_date%20DESC'
-
-        RECORD_LIMIT = 7_500_000
+        RECORD_LIMIT = 10_000_000
         SPLIT_LIMIT = 10
         force=False
 
@@ -113,7 +112,8 @@ with (DAG(
 
             last_record = pd.read_sql_query("SELECT created_date FROM complaints ORDER BY created_date DESC LIMIT 1",conn)
             last_record['created_date'] = pd.to_datetime(last_record['created_date'])
-            last_dt = last_record.iloc[0]['created_date']
+            print(f"Record existing check: {last_record.shape}")
+            last_dt = last_record['created_date'].max()
             last_day, last_month, last_year = f'{last_dt.day:02d}', f'{last_dt.month:02d}', f'{last_dt.year}'
             last_hour, last_minute, last_second = f'{last_dt.hour:02d}', f'{last_dt.minute:02d}', f'{last_dt.second:02d}'
 
@@ -241,6 +241,8 @@ with (DAG(
             'STATEN ISLAND': '#ed6e13'
         }
 
+        visuals = []
+
         def viz_noise_by_borough(df):
             df_nct_bor = ((df.groupby(['complaint_type', 'borough'])['unique_key']
                            .count())
@@ -250,6 +252,7 @@ with (DAG(
             df_nct_bor = df_nct_bor.rename(columns={'unique_key': 'num_complaints'})
             noise_type_color_map = {a: b for b, a in zip(px.colors.sequential.matter_r, df_nct_bor["complaint_type"].unique())}
             def save_type_pie():
+                cur_dir = r"/opt/airflow/shared/noise_type_pie.html"
                 fig = go.Figure()
                 fig.add_trace(
                     go.Pie(
@@ -282,8 +285,10 @@ with (DAG(
                     showlegend=False
                 )
                 fig.update_traces(textposition='inside')
-                fig.write_html(r"/opt/airflow/shared/noise_type_pie.html")
+                fig.write_html(cur_dir)
+                return cur_dir
             def save_type_donut():
+                cur_dir = r"/opt/airflow/shared/noise_type_donut.html"
                 temp = df_nct_bor.groupby('borough', as_index=False)['num_complaints'].sum()
                 temp['complaint_type'] = 'TOTAL'
                 df_nct_bor_with_total = pd.concat((df_nct_bor, temp))
@@ -327,10 +332,11 @@ with (DAG(
                     lambda a: a.update(text=a.text.replace("complaint_type=", ""), showarrow=False))
 
                 fig.update_traces(hovertemplate=None, textposition='inside')
-                fig.write_html(r"/opt/airflow/shared/noise_type_donut.html")
+                fig.write_html(cur_dir)
+                return cur_dir
 
-            save_type_pie()
-            save_type_donut()
+            visuals.append(save_type_pie())
+            visuals.append(save_type_donut())
 
         def viz_noise_by_time_day(df):
             def hour_to_ampm(hour):
@@ -371,6 +377,7 @@ with (DAG(
             df_hour.rename(columns={'count': 'average_complaints', 'hour': 'Hour'}, inplace=True)
 
             def save_hour_bar_subplots():
+                cur_dir = r"/opt/airflow/shared/hour_subplot.html"
                 fig = subplots.make_subplots(rows=1, cols=7, shared_yaxes=True,
                                               subplot_titles=df_day_hour['day_of_week'].unique())
                 for i, d in enumerate(df_day_hour['day_of_week'].unique(), start=1):
@@ -409,8 +416,11 @@ with (DAG(
                                    ]
                                    )
 
-                fig.write_html(r"/opt/airflow/shared/hour_subplot.html")
+                fig.write_html(cur_dir)
+                return cur_dir
+
             def save_hour_avg_bar():
+                cur_dir = r"/opt/airflow/shared/hour_avg_bar.html"
                 fig = px.bar(
                         df_hour,
                         x='hour_ampm',
@@ -433,8 +443,10 @@ with (DAG(
                    )
 
                 fig.update_traces(hovertemplate='<b>%{x}</b><br>Average: %{y}<extra></extra>',)
-                fig.write_html(r"/opt/airflow/shared/hour_avg_bar.html")
+                fig.write_html(cur_dir)
+                return cur_dir
             def save_dayofweek_avg_bar():
+                cur_dir = r"/opt/airflow/shared/dayofweek_avg_bar.html"
                 fig = px.bar(
                     df_dayofweek,
                     x='dayofweek',
@@ -461,11 +473,12 @@ with (DAG(
                    )
 
                 fig.update_traces(hovertemplate='<b>%{x}</b><br>Average: %{y}<extra></extra>')
-                fig.write_html(r"/opt/airflow/shared/dayofweek_avg_bar.html")
+                fig.write_html(cur_dir)
+                return cur_dir
 
-            save_hour_bar_subplots()
-            save_hour_avg_bar()
-            save_dayofweek_avg_bar()
+            visuals.append(save_hour_bar_subplots())
+            visuals.append(save_hour_avg_bar())
+            visuals.append(save_dayofweek_avg_bar())
 
         def viz_noise_by_description(df):
             df_desc = (df.groupby(['descriptor', 'complaint_type']).count()['unique_key']
@@ -480,6 +493,7 @@ with (DAG(
             n_highest = df_gr_desc.sum().sort_values(ascending=False).iloc[N_TH - 1]
             common_noise_types = df_desc[df_desc['desc_total'] >= n_highest]['descriptor'].unique()
             def save_desc_hbar():
+                cur_dir = r"/opt/airflow/shared/description_hbar.html"
                 fig = px.bar(df_desc[df_desc['descriptor'].isin(common_noise_types)],
                               x="num_complaints",
                               y="descriptor",
@@ -510,8 +524,10 @@ with (DAG(
                 fig.update_traces(
                     hovertemplate='Type: <i>%{customdata[0]}</i><extra></extra>' + '<br>Count: <i>%{x:d}</i>')
 
-                fig.write_html(r"/opt/airflow/shared/description_hbar.html")
-            save_desc_hbar()
+                fig.write_html(cur_dir)
+                return cur_dir
+
+            visuals.append(save_desc_hbar())
 
         def viz_noise_by_street(df):
             import re
@@ -607,6 +623,7 @@ with (DAG(
             df_street_bor = df_street.groupby(['borough', 'street_name'], as_index=False)['unique_key'].count().rename(
                 columns={'unique_key': 'num_complaints'})
             def save_street_scatter():
+                cur_dir = r"/opt/airflow/shared/street_scatter.html"
                 fig = subplots.make_subplots(rows=5, cols=1, vertical_spacing=0.085)
                 for i, b in enumerate(['BRONX', 'MANHATTAN', 'QUEENS', 'BROOKLYN', 'STATEN ISLAND'], start=1):
                     color = borough_color_map.get(b)
@@ -648,8 +665,11 @@ with (DAG(
                     fig.update_yaxes(range=[-2000, 2000], row=i, col=1, type='log', showticklabels=False)
 
                 fig.update_traces(hovertemplate='<br>Total Complaints: <b>%{y}</b>')
-                fig.write_html(r"/opt/airflow/shared/street_scatter.html")
-            save_street_scatter()
+                fig.write_html(cur_dir)
+                return cur_dir
+
+            visuals.append(save_street_scatter())
+
             df_sbg = (df_street_bor.groupby('borough', as_index=False)['num_complaints']
                       .agg(['median', 'mean', 'sum'])
                       .sort_values(['median', 'mean', 'sum'], ascending=False)
@@ -660,6 +680,7 @@ with (DAG(
             df_sbg['Median Complaints'] = df_sbg['Median Complaints'].astype(int)
             df_sbg['Average Complaints'] = df_sbg['Average Complaints'].round(2)
 
+            visuals.append(r"/opt/airflow/shared/groupby_borough_noise.csv")
             df_sbg.to_csv(r"/opt/airflow/shared/groupby_borough_noise.csv")
 
         viz_noise_by_borough(records)
@@ -667,6 +688,7 @@ with (DAG(
         viz_noise_by_description(records)
         viz_noise_by_street(records)
 
+        return visuals
 
     @task(multiple_outputs=True)
     def split_data(df, train_size, test_size):
@@ -844,27 +866,30 @@ with (DAG(
         return fig_path
 
     @task
-    def update_contents_to_repo():
+    def update_contents_to_repo(r_files, r_forecast):
         import os
         import base64
         from airflow.models import Variable
         def to_github(cur_file_path, repo_path):
             with open(cur_file_path, 'r', errors="ignore") as f:
                 contents = f.read()
-                contents = base64.b64encode(contents).decode()
+                contents = base64.b64encode(contents.encode("utf-8")).decode()
 
-            url = f"https://api.github.com/repos/msb46/311_complaints/contents/{github_path}"
+            url = f"https://api.github.com/repos/msb46/311_complaints/contents/{repo_path}"
             headers = {
                 "Authorization": f"Bearer {Variable.get('311_TOKEN')}",
-                "Accept": "application/vnd.github+json"
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
             }
 
             # Check if file already exists to get its SHA
             get_resp = requests.get(url, headers=headers)
+            print("Status code:",get_resp.json())
             sha = get_resp.json().get("sha") if get_resp.status_code == 200 else None
-
+            # print("SHA:", sha)
+            
             payload = {
-                "message": f"Update {repo_path} [skip-checks]",
+                "message": f"Daily update of plots",
                 "content": contents,
                 "branch": 'master',
             }
@@ -875,14 +900,19 @@ with (DAG(
             resp = requests.put(url, headers=headers, json=payload)
             resp.raise_for_status()
 
-        local_shared_dir = r'/opt/airflow/dags/shared'
-        for root, _, files in os.walk(local_shared_dir):
-            print(f"{len(files)} files found in directory")
-            for f in files:
-                local_path = os.path.join(root, f)
-                rel_path = os.path.relpath(local_path, local_shared_dir)
-                github_path = f"shared/{rel_path}"
-                to_github(rel_path, github_path)
+        # Pushing other visuals
+        print(f"{len(r_files)} files found for pushing")
+        for r_file_path in r_files:
+            f_name = r_file_path.split('/')[-1]
+            cur_github_path = f"shared/{f_name}"
+            to_github(r_file_path, cur_github_path)
+
+
+        # Pushing forecast plot
+        print(f"Forecast present?: {len(r_forecast)}")
+        f_name = r_forecast[0].split('/')[-1]
+        cur_github_path = f"shared/{f_name}"
+        to_github(r_file_path, cur_github_path)
 
 
     with TaskGroup("extract_transform_load", tooltip="Extract, Transform, Load") as etl:
@@ -892,6 +922,7 @@ with (DAG(
         rs_path, df_path = transformed_data["rs_path"], transformed_data["df_path"]
 
         create_visuals = visualize(df_path)
+        fc = []
 
         with TaskGroup("train_model_forecast", tooltip="Training + Forecasting") as tmf:
             train_size = int(168 * 10)
@@ -905,8 +936,10 @@ with (DAG(
             forecast_path = generate_forecast(trained_model, train_size, test_size, test_exog)
             make_forecast_plot = visualize_forecast(forecast_path, train_records, test_records)
 
+            fc.append(make_forecast_plot)
+
             split_records >> trained_model >> forecast_path >> make_forecast_plot
 
-        to_gh = update_contents_to_repo()
+        to_gh = update_contents_to_repo(create_visuals, fc)
 
         init_db >> extracted_data >> transformed_data >> [create_visuals, tmf] >> to_gh
