@@ -912,7 +912,7 @@ with (DAG(
         print(f"Forecast present?: {len(r_forecast)}")
         f_name = r_forecast[0].split('/')[-1]
         cur_github_path = f"shared/{f_name}"
-        to_github(r_file_path, cur_github_path)
+        to_github(r_forecast[0], cur_github_path)
 
 
     with TaskGroup("extract_transform_load", tooltip="Extract, Transform, Load") as etl:
