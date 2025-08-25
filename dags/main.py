@@ -210,9 +210,9 @@ with (DAG(
         df_resample['peak_complaints_24hrs'] = df_resample['num_complaints'].ffill().rolling('1D').max()
         df_resample['dayofweek'] = df_resample.index.dayofweek
         df_resample['hour'] = df_resample.index.hour
-        df_resample['rolling_avg_dayofweek_hour_prev3instances'] = \
-        df_resample.groupby(['dayofweek', 'hour'])['num_complaints'].transform(
-            lambda x: x.ffill().rolling(3).mean())
+        # df_resample['rolling_avg_dayofweek_hour_prev3instances'] = \
+        # df_resample.groupby(['dayofweek', 'hour'])['num_complaints'].transform(
+        #     lambda x: x.ffill().rolling(3).mean())
 
         del df_resample['dayofweek']
         del df_resample['hour']
